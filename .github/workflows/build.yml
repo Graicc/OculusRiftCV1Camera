@@ -22,9 +22,10 @@ jobs:
         shell: pwsh
         run: |
           Invoke-WebRequest https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.7z -OutFile libusb.7z
-          # Extract only what the build needs; some ARM64 entries in the
-          # archive use a compression method older 7z builds cannot read.
-          7z x -y -olibusb-msvc libusb.7z "VS2022" "include" "libusb.h" | Out-Null
+          # Exclude the ARM64 entries; they use a compression method some
+          # 7z builds cannot read, and the build does not need them.
+          7z x -y -olibusb-msvc libusb.7z -xr!MinGW-llvm-aarch64 -xr!binaarch64 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7z extraction failed" }
           if (-not (Test-Path libusb-msvc/include/libusb-1.0/libusb.h)) {
             New-Item -ItemType Directory -Force libusb-msvc/include/libusb-1.0 | Out-Null
             Copy-Item libusb-msvc/libusb.h libusb-msvc/include/libusb-1.0/
@@ -44,11 +45,19 @@ jobs:
       - name: Build MSI
         shell: pwsh
         run: |
-          Invoke-WebRequest https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile wix.zip
-          Expand-Archive wix.zip -DestinationPath wix
+          $candle = Get-Command candle.exe -ErrorAction SilentlyContinue
+          if ($candle) {
+            $wixBin = Split-Path $candle.Source
+          } else {
+            Invoke-WebRequest https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile wix.zip
+            Expand-Archive wix.zip -DestinationPath wix
+            $wixBin = Join-Path $PWD 'wix'
+          }
           cd installer
-          ..\wix\candle.exe -nologo -arch x64 Product.wxs
-          ..\wix\light.exe -nologo -o RiftSensorCam.msi Product.wixobj
+          & "$wixBin\candle.exe" -nologo -arch x64 Product.wxs
+          if ($LASTEXITCODE -ne 0) { throw "candle failed" }
+          & "$wixBin\light.exe" -nologo -o RiftSensorCam.msi Product.wixobj
+          if ($LASTEXITCODE -ne 0) { throw "light failed" }
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
