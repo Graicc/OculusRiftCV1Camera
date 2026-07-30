@@ -1121,12 +1121,19 @@ static HRESULT RegisterFilters(BOOL bRegister)
 {
 	UCASSERT(g_hInst != 0);
 	WCHAR achFileName[MAX_PATH];
-	if (!GetModuleFileNameW(g_hInst, achFileName, sizeof(achFileName))) return AmHresultFromWin32(GetLastError());
+	if (!GetModuleFileNameW(g_hInst, achFileName, sizeof(achFileName)/sizeof(*achFileName))) return AmHresultFromWin32(GetLastError());
 	HRESULT hr = CoInitialize(0);
 
 	//The Rift sensor filter always registers exactly one device with a fixed name
 	int MaxCapNum = 1;
 	const wchar_t* pCaptureSourceName = CaptureSourceName;
+
+	if (SUCCEEDED(hr) && bRegister)
+	{
+		//Register the COM class for the capture source and its property page
+		hr = AMovieSetupRegisterServer(GetCLSIDUnityCaptureServiceNum(0), GetCaptureSourceNameNum(pCaptureSourceName, 0).str, achFileName, L"Both", L"InprocServer32");
+		if (SUCCEEDED(hr)) hr = AMovieSetupRegisterServer(CLSID_UnityCaptureProperties, CaptureSourceName L" Configuration", achFileName, L"Both", L"InprocServer32");
+	}
 
 	if (SUCCEEDED(hr))
 	{
