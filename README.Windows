@@ -15,8 +15,11 @@ files.
 Easy install (one MSI, no background programs)
 ==============================================
 
-Plug in the camera, then install installer\RiftSensorCam.msi (build
-instructions below). It installs a self-contained DirectShow virtual
+Download RiftSensorCam.msi from the latest release:
+
+  https://github.com/Graicc/OculusRiftCV1Camera/releases/latest
+
+Plug in the camera, then run the MSI. It installs a self-contained DirectShow virtual
 camera, "Rift Sensor Camera", that opens the Rift sensor directly
 whenever an application starts using the camera - there is no
 companion program to run. The installer also takes care of the driver:
@@ -35,12 +38,18 @@ the sensor to its original Oculus driver.
 If the camera was not plugged in during installation, plug it in and
 run (elevated): "C:\Program Files\RiftSensorCam\RiftSensorSetup.exe" install
 
-Building the MSI:
-1. Build filter\RiftSensorCamFilter.dll and installer\RiftSensorSetup.exe
-   with MSVC (see filter\build.bat notes below or use the commands in
-   this README's history), using the static libusb from
-   libusb-msvc\VS2022\MS64\static.
-2. Compile installer\Product.wxs with WiX v3.14:
+Building the MSI yourself: GitHub Actions builds it on every push
+(.github\workflows\build.yml, artifact "RiftSensorCam-msi"), and
+attaches it to a release for v* tags. That workflow is also the
+reference for a local build; it boils down to:
+
+1. Fetch libusb's MSVC static build into libusb-msvc\ (the workflow
+   downloads libusb-1.0.29.7z and copies include\libusb.h to
+   include\libusb-1.0\libusb.h).
+2. From an x64 MSVC prompt, compile the filter DLL in filter\ and
+   RiftSensorSetup.exe in installer\ (see the two "cl" invocations in
+   the workflow).
+3. Compile installer\Product.wxs with WiX v3.14:
    candle -arch x64 Product.wxs && light -o RiftSensorCam.msi Product.wixobj
 
 The sections below describe the original manual setup (standalone
