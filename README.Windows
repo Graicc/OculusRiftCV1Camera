@@ -1,0 +1,160 @@
+========================================================================
+README for the Windows port of the Oculus Rift CV1 camera viewer
+========================================================================
+
+Overview
+========
+
+This is a Windows port of Oliver Kreylos' Oculus Rift CV1 camera code.
+It talks to a CV1 tracking camera ("Rift Sensor", USB VID 2833, PID
+0211) through its low-level USB interface using libusb-1.0 on top of
+Microsoft's inbox WinUSB driver, with no Vrui dependency. The port
+captures 1280x960 8-bit grayscale frames and writes them out as PNG
+files.
+
+Files:
+
+  OculusRiftCV1CameraWin.cpp  The port: ESP770U controller init, AR0134
+                              sensor setup, UVC probe/commit and
+                              isochronous streaming via libusb, frame
+                              reassembly, PNG output (stb_image_write).
+  OculusRiftCV1CameraWebcam.cpp
+                              Virtual webcam sender: same camera code,
+                              but streams frames continuously into the
+                              UnityCapture DirectShow filter so the
+                              camera appears as "Rift Sensor Camera" in
+                              any app (Zoom, Discord, OBS, browsers).
+  unitycapture/               Prebuilt UnityCapture DirectShow filter
+                              (https://github.com/schellingb/UnityCapture,
+                              zlib license) and its shared-memory
+                              protocol header (shared.inl).
+  winusb-assign.cpp           Helper that binds the inbox "WinUsb
+                              Device" driver (winusb.inf) to the
+                              sensor's video interface, replicating
+                              Device Manager's manual driver selection.
+                              Run elevated, once.
+  winusbtest.cpp              Small probe that checks whether a device
+                              path can be driven with the WinUsb API.
+  stb_image_write.h           Single-header PNG writer (public domain).
+
+Prerequisites
+=============
+
+1. MSYS2 (https://www.msys2.org, or `winget install MSYS2.MSYS2`), then
+   from an MSYS2 shell:
+
+   $ pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-libusb
+
+Building
+========
+
+From a MINGW64 shell in this directory:
+
+$ g++ -O2 -o OculusRiftCV1CameraWin.exe OculusRiftCV1CameraWin.cpp \
+      -lusb-1.0 -static-libgcc -static-libstdc++
+$ g++ -O2 -o winusb-assign.exe winusb-assign.cpp -lsetupapi -static
+
+Copy libusb-1.0.dll and libwinpthread-1.dll from C:\msys64\mingw64\bin
+next to OculusRiftCV1CameraWin.exe if you run it outside an MSYS2
+shell.
+
+One-time driver setup
+=====================
+
+Windows binds the sensor's video interface (MI_00) to Oculus' own
+driver (OCUSBVID), which libusb cannot use. The winusb-assign helper
+force-assigns Microsoft's signed inbox WinUSB driver instead — the
+programmatic equivalent of Device Manager's "Update driver -> Let me
+pick" flow. No third-party drivers or certificates are installed.
+
+From an elevated PowerShell:
+
+> Stop-Service OVRService          # Oculus runtime holds the sensor
+> .\winusb-assign.exe              # binds "WinUsb Device" to MI_00
+> New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Enum\USB\VID_2833&PID_0211&MI_00\<instance>\Device Parameters" `
+      -Name DeviceInterfaceGUIDs -PropertyType MultiString `
+      -Value @("{b35924d6-3e16-4a9e-9782-5524a4b79bac}") -Force
+> pnputil /restart-device "USB\VID_2833&PID_0211&MI_00\<instance>"
+
+(winusb-assign.exe defaults to the device instance ID of the sensor it
+was written for; pass your sensor's MI_00 instance ID as the first
+argument if it differs — find it in Device Manager under
+Details -> Device instance path, or with:
+  Get-PnpDevice | ? { $_.InstanceId -like "USB\VID_2833&PID_0211&MI_00*" } )
+
+The DeviceInterfaceGUIDs registry value is required for libusb to
+locate the device; the GUID value itself is arbitrary.
+
+To restore the Oculus driver later: Device Manager -> Universal Serial
+Bus devices -> "WinUsb Device" -> Update driver -> "Search
+automatically for drivers". The Oculus driver package (oem*.inf) is
+still installed and outranks winusb.inf, so Windows rebinds it.
+
+Use
+===
+
+> .\OculusRiftCV1CameraWin.exe [-auto] [-gain <0-255>]
+      [-exposure <lines>] [-frames <n>] [-o <prefix>] [--usbdk]
+
+  -auto             Enable the sensor's automatic exposure/gain control
+  -gain <g>         Global gain, 0-255 (default 128)
+  -exposure <e>     Exposure time in sensor line periods (default 800);
+                    values above 960 trade frame rate for brightness,
+                    useful in IR-dark rooms
+  -frames <n>       Number of frames to capture (default 5)
+  -o <prefix>       Output file name prefix (default "frame"; writes
+                    <prefix>00.png, <prefix>01.png, ...)
+  --usbdk           Use libusb's UsbDk backend instead of WinUSB (only
+                    if you installed UsbDk and rebooted; not needed
+                    with the driver setup above)
+
+Make sure the Oculus runtime is not holding the camera
+(Stop-Service OVRService from an elevated prompt) before running.
+
+Using the camera as a webcam
+============================
+
+One-time filter registration (elevated):
+
+> regsvr32 /s unitycapture\UnityCaptureFilter64.dll "/i:UnityCaptureName=Rift Sensor Camera"
+
+(Unregister later with: regsvr32 /u /s unitycapture\UnityCaptureFilter64.dll)
+
+Build the sender:
+
+$ g++ -O2 -o OculusRiftCV1CameraWebcam.exe OculusRiftCV1CameraWebcam.cpp \
+      -lusb-1.0 -static-libgcc -static-libstdc++
+
+Then run it (and leave it running) whenever you want the webcam:
+
+> .\OculusRiftCV1CameraWebcam.exe [-target <0-255>] [-gain <0-255>]
+      [-exposure <lines>] [-auto] [-rotate <0|90|180|270>]
+
+"Rift Sensor Camera" (1280x960) then shows up in every app that
+enumerates DirectShow cameras. Stop with Ctrl+C.
+
+By default the sender runs a software auto-exposure loop that steers
+sensor exposure and gain toward a target mean brightness (default 80;
+change with -target). Passing -gain or -exposure switches to fixed
+manual settings; -auto uses the sensor's hardware auto-exposure
+instead (not recommended: it caps exposure at one frame time, which is
+too dark for indoor scenes). The -rotate option rotates the image
+clockwise in case the sensor is mounted sideways.
+
+Quick self-test with ffmpeg:
+
+$ ffmpeg -f dshow -video_size 1280x960 -i video="Rift Sensor Camera" \
+      -vf "select=gte(n\,90)" -frames:v 1 check.png
+
+Notes
+=====
+
+- The camera streams over a SuperSpeed isochronous endpoint; plug it
+  into a USB 3.0 port.
+- Frames are raw sensor luminance. The sensor mostly sees infrared;
+  daylight scenes look like black-and-white photographs, and IR LEDs
+  (e.g. Rift headset, remotes) appear as bright dots.
+- While WinUSB is bound to the sensor, the Oculus software will not
+  see that sensor. Restore the driver (see above) to use it for
+  tracking again.
+- The Linux version and original documentation are in README.
