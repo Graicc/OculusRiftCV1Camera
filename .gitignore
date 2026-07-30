@@ -10,3 +10,16 @@ UsbDkHelper.dll
 
 # Captured test images
 *.png
+
+# MSVC build artifacts
+*.obj
+*.pdb
+*.exp
+*.lib
+filter/RiftSensorCamFilter.dll
+installer/*.wixobj
+installer/*.wixpdb
+
+# Extracted libusb release (downloaded, not source)
+libusb-msvc/
+installer/RiftSensorCam.msi

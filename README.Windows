@@ -12,6 +12,41 @@ Microsoft's inbox WinUSB driver, with no Vrui dependency. The port
 captures 1280x960 8-bit grayscale frames and writes them out as PNG
 files.
 
+Easy install (one MSI, no background programs)
+==============================================
+
+Plug in the camera, then install installer\RiftSensorCam.msi (build
+instructions below). It installs a self-contained DirectShow virtual
+camera, "Rift Sensor Camera", that opens the Rift sensor directly
+whenever an application starts using the camera - there is no
+companion program to run. The installer also takes care of the driver:
+it binds Microsoft's inbox WinUSB driver to the sensor's video
+interface (the same as Device Manager's manual driver selection; no
+third-party drivers, no test signing) and stops the Oculus runtime
+service, which would otherwise hold the camera.
+
+Configuration lives in HKLM\SOFTWARE\RiftSensorCam:
+  TargetBrightness (default 80)  Software auto-exposure target, 16-250
+  Rotate (default 0)             Clockwise image rotation: 0/90/180/270
+
+Uninstalling from "Apps & features" unregisters the camera and reverts
+the sensor to its original Oculus driver.
+
+If the camera was not plugged in during installation, plug it in and
+run (elevated): "C:\Program Files\RiftSensorCam\RiftSensorSetup.exe" install
+
+Building the MSI:
+1. Build filter\RiftSensorCamFilter.dll and installer\RiftSensorSetup.exe
+   with MSVC (see filter\build.bat notes below or use the commands in
+   this README's history), using the static libusb from
+   libusb-msvc\VS2022\MS64\static.
+2. Compile installer\Product.wxs with WiX v3.14:
+   candle -arch x64 Product.wxs && light -o RiftSensorCam.msi Product.wixobj
+
+The sections below describe the original manual setup (standalone
+capture tool and sender-based virtual webcam); they remain useful for
+development and debugging.
+
 Files:
 
   OculusRiftCV1CameraWin.cpp  The port: ESP770U controller init, AR0134

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="Rift Sensor Camera"
+           Language="1033"
+           Version="1.0.0.0"
+           Manufacturer="graic"
+           UpgradeCode="7c1f36a2-5f80-4e17-9d09-3b7e6c2a4d51">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="Use an Oculus Rift CV1 tracking camera as a Windows webcam"
+             Comments="Installs a self-contained DirectShow virtual camera that reads the Rift CV1 sensor directly." />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Rift Sensor Camera is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="RiftSensorCam">
+          <Component Id="FilterDll" Guid="a4b83c1d-92e6-4f05-b1c7-8d24e95a6f30" Win64="yes">
+            <File Id="RiftSensorCamFilterDll" Source="..\filter\RiftSensorCamFilter.dll" KeyPath="yes" />
+          </Component>
+          <Component Id="SetupExe" Guid="c2d94e5f-13a7-4b86-92d8-0e35f6a7b841" Win64="yes">
+            <File Id="RiftSensorSetupExe" Source="RiftSensorSetup.exe" KeyPath="yes" />
+          </Component>
+          <Component Id="ConfigRegistry" Guid="e6f05a7b-24c8-4d97-a3e9-1f46a7b8c952" Win64="yes">
+            <RegistryKey Root="HKLM" Key="SOFTWARE\RiftSensorCam">
+              <RegistryValue Name="TargetBrightness" Type="integer" Value="80" KeyPath="yes" />
+              <RegistryValue Name="Rotate" Type="integer" Value="0" />
+            </RegistryKey>
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="Main" Title="Rift Sensor Camera" Level="1">
+      <ComponentRef Id="FilterDll" />
+      <ComponentRef Id="SetupExe" />
+      <ComponentRef Id="ConfigRegistry" />
+    </Feature>
+
+    <!-- Driver binding + filter registration, run elevated as SYSTEM: -->
+    <CustomAction Id="RunSetupInstall"
+                  FileKey="RiftSensorSetupExe"
+                  ExeCommand="install"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+    <CustomAction Id="RunSetupUninstall"
+                  FileKey="RiftSensorSetupExe"
+                  ExeCommand="uninstall"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RunSetupInstall" After="WriteRegistryValues">NOT Installed OR REINSTALL</Custom>
+      <Custom Action="RunSetupUninstall" After="InstallInitialize">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>
