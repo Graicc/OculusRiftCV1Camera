@@ -26,9 +26,11 @@ jobs:
           # 7z builds cannot read, and the build does not need them.
           7z x -y -olibusb-msvc libusb.7z -xr!MinGW-llvm-aarch64 -xr!binaarch64 | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "7z extraction failed" }
+          # The archive ships the header as include/libusb.h; the sources
+          # include <libusb-1.0/libusb.h>:
           if (-not (Test-Path libusb-msvc/include/libusb-1.0/libusb.h)) {
             New-Item -ItemType Directory -Force libusb-msvc/include/libusb-1.0 | Out-Null
-            Copy-Item libusb-msvc/libusb.h libusb-msvc/include/libusb-1.0/
+            Copy-Item libusb-msvc/include/libusb.h libusb-msvc/include/libusb-1.0/
           }
           if (-not (Test-Path libusb-msvc/VS2022/MS64/static/libusb-1.0.lib)) { throw "libusb static lib missing" }
 
