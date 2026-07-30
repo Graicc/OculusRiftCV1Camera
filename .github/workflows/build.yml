@@ -1,0 +1,63 @@
+name: Build installer
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Download libusb (MSVC static)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.7z -OutFile libusb.7z
+          # Extract only what the build needs; some ARM64 entries in the
+          # archive use a compression method older 7z builds cannot read.
+          7z x -y -olibusb-msvc libusb.7z "VS2022" "include" "libusb.h" | Out-Null
+          if (-not (Test-Path libusb-msvc/include/libusb-1.0/libusb.h)) {
+            New-Item -ItemType Directory -Force libusb-msvc/include/libusb-1.0 | Out-Null
+            Copy-Item libusb-msvc/libusb.h libusb-msvc/include/libusb-1.0/
+          }
+          if (-not (Test-Path libusb-msvc/VS2022/MS64/static/libusb-1.0.lib)) { throw "libusb static lib missing" }
+
+      - name: Build filter DLL
+        shell: cmd
+        working-directory: filter
+        run: cl /nologo /O2 /MT /EHsc /DUNICODE /D_UNICODE /D_CRT_SECURE_NO_WARNINGS /LD /I..\libusb-msvc\include streams.cpp RiftSensorCamFilter.cpp /Fe:RiftSensorCamFilter.dll /link /LTCG /DEF:RiftSensorCamFilter.def ..\libusb-msvc\VS2022\MS64\static\libusb-1.0.lib strmiids.lib winmm.lib ole32.lib oleaut32.lib advapi32.lib user32.lib gdi32.lib uuid.lib shell32.lib
+
+      - name: Build setup tool
+        shell: cmd
+        working-directory: installer
+        run: cl /nologo /O2 /MT /EHsc RiftSensorSetup.cpp /Fe:RiftSensorSetup.exe /link setupapi.lib cfgmgr32.lib advapi32.lib
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile wix.zip
+          Expand-Archive wix.zip -DestinationPath wix
+          cd installer
+          ..\wix\candle.exe -nologo -arch x64 Product.wxs
+          ..\wix\light.exe -nologo -o RiftSensorCam.msi Product.wixobj
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RiftSensorCam-msi
+          path: installer/RiftSensorCam.msi
+
+      - name: Attach MSI to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/RiftSensorCam.msi
